@@ -1,0 +1,348 @@
+1. Broken Access Control
+Vulnerable Code
+JavaScript
+app.get('/profile/:userId', (req, res) => {
+User.findById(req.params.userId, (err, user) => {
+if (err) return res.status(500).send(err);
+res.json(user);
+});
+});
+Show more lines
+What is wrong?
+
+The program trusts the user ID in the URL. A person could change the ID and possibly see another person's profile.
+
+OWASP specifically lists viewing or changing another person's account using its identifier as a Broken Access Control problem.
+
+Secure Version
+JavaScript
+app.get('/profile/:userId', requireLogin, async (req, res) => {
+if (req.user.id !== req.params.userId &&
+req.user.role !== 'admin') {
+return res.status(403).send('Access denied');
+}
+ 
+const user = await User.findById(req.params.userId);
+res.json(user);
+});
+Show more lines
+How I fixed it
+
+I added a check that compares the logged-in user with the requested account. An admin is also allowed to access it.
+
+If someone does not have permission, they get a 403 error.
+
+2. Broken Access Control
+Vulnerable Code
+Python
+@app.route('/account/<user_id>')
+def get_account(user_id):
+user = db.query(User).filter_by(id=user_id).first()
+return jsonify(user.to_dict())
+Show more lines
+What is wrong?
+
+This has almost the same problem as the first example. Someone can change the user_id and try to access somebody else's account.
+
+Secure Version
+Python
+@app.route('/account/<user_id>')
+@login_required
+def get_account(user_id):
+ 
+if current_user.id != user_id and current_user.role != "admin":
+abort(403)
+ 
+user = db.query(User).filter_by(id=user_id).first_or_404()
+ 
+return jsonify(user.to_dict())
+Show more lines
+How I fixed it
+
+I made the user log in first. Then the program checks if they own the account or if they are an admin.
+
+This helps stop users from looking at information they should not have.
+
+3. Cryptographic Failures
+Vulnerable Code
+Java
+public String hashPassword(String password)
+throws NoSuchAlgorithmException {
+ 
+MessageDigest md = MessageDigest.getInstance("MD5");
+md.update(password.getBytes());
+ 
+byte[] digest = md.digest();
+ 
+return DatatypeConverter.printHexBinary(digest);
+}
+Show more lines
+What is wrong?
+
+The program uses MD5 for password hashing.
+
+OWASP includes broken or risky cryptographic algorithms under Cryptographic Failures.
+
+Secure Version
+
+A better approach is using a password-hashing library such as BCrypt.
+
+Java
+String hashedPassword = BCrypt.hashpw(
+password,
+BCrypt.gensalt()
+);
+Show more lines
+
+To check the password:
+
+Java
+if (BCrypt.checkpw(inputPassword, hashedPassword)) {
+System.out.println("Login successful");
+}
+Show more lines
+How I fixed it
+
+Instead of using MD5, I used a password hashing method made for passwords.
+
+This gives the password better protection if someone gets access to the stored password hashes.
+
+4. Cryptographic Failures
+Vulnerable Code
+Python
+import hashlib
+ 
+def hash_password(password):
+return hashlib.sha1(password.encode()).hexdigest()
+Show more lines
+What is wrong?
+
+This program directly uses SHA-1 to hash a password.
+
+Passwords need stronger protection than directly using this type of hash.
+
+Secure Version
+Python
+from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash
+ 
+hashed_password = generate_password_hash(password)
+ 
+if check_password_hash(hashed_password, entered_password):
+print("Password is correct")
+Show more lines
+How I fixed it
+
+I used a password-hashing function instead of directly using SHA-1.
+
+The password can now be checked without storing the original password.
+
+5. Injection
+Vulnerable Code
+Java
+String username = request.getParameter("username");
+ 
+String query =
+"SELECT * FROM users WHERE username = '" +
+username + "'";
+ 
+Statement stmt = connection.createStatement();
+ResultSet rs = stmt.executeQuery(query);
+Show more lines
+What is wrong?
+
+The username is being added directly into the SQL command.
+
+This is dangerous because user input should not control how a database command works.
+
+OWASP lists Injection as A03 in its 2021 Top 10.
+
+Secure Version
+Java
+String username = request.getParameter("username");
+ 
+String query =
+"SELECT * FROM users WHERE username = ?";
+ 
+PreparedStatement stmt =
+connection.prepareStatement(query);
+ 
+stmt.setString(1, username);
+ 
+ResultSet rs = stmt.executeQuery();
+Show more lines
+How I fixed it
+
+I used a prepared statement.
+
+The username is handled as data instead of being added directly into the SQL command. This helps protect the database from SQL injection.
+
+6. Injection
+Vulnerable Code
+JavaScript
+app.get('/user', (req, res) => {
+ 
+db.collection('users').findOne(
+{ username: req.query.username },
+(err, user) => {
+if (err) throw err;
+res.json(user);
+}
+);
+});
+Show more lines
+What is wrong?
+
+The program trusts information coming from the user and sends it directly into the database query.
+
+Secure Version
+JavaScript
+app.get('/user', async (req, res) => {
+ 
+if (typeof req.query.username !== 'string') {
+return res.status(400).send('Invalid username');
+}
+ 
+const username = req.query.username.trim();
+ 
+const user = await db.collection('users')
+.findOne({ username: username });
+ 
+res.json(user);
+});
+Show more lines
+How I fixed it
+
+I checked that the username is actually a string before using it.
+
+This limits the type of information that can be sent into the database query.
+
+7. Insecure Design
+Vulnerable Code
+Python
+@app.route('/reset-password', methods=['POST'])
+def reset_password():
+ 
+email = request.form['email']
+new_password = request.form['new_password']
+ 
+user = User.query.filter_by(email=email).first()
+ 
+user.password = new_password
+ 
+db.session.commit()
+ 
+return 'Password reset'
+Show more lines
+What is wrong?
+
+This program lets somebody reset a password just by providing an email address and a new password.
+
+There is no proof that the person actually owns the account.
+
+OWASP describes Insecure Design as problems involving missing or ineffective security controls in the application's design.
+
+Secure Idea
+
+I would change the design so the user first has to prove that they own the account.
+
+A reset process could use a secure, temporary reset token before the password is changed.
+
+The new password should also be hashed instead of being saved as plain text.
+
+How I fixed it
+
+The main fix is making password reset require verification before changing the password.
+
+This adds an important security check that the original code was missing.
+
+8. Software and Data Integrity Failures
+Vulnerable Code
+HTML
+<script src="https://cdn.example.com/lib.js"></script>
+Show more lines
+Content couldn't be displayed
+Sorry, something went wrong. Please try again.
+What is wrong?
+
+The webpage is downloading JavaScript from another location without checking its integrity.
+
+Secure Version
+HTML
+<script
+src="https://cdn.example.com/lib.js"
+integrity="sha384-REAL_HASH_HERE"
+crossorigin="anonymous">
+</script>
+Show more lines
+How I fixed it
+
+I added an integrity check.
+
+The real hash would have to come from the trusted library being used. I would not make up a hash and use it in a real website.
+
+9. Server-Side Request Forgery
+Vulnerable Code
+Python
+url = input("Enter URL: ")
+ 
+response = requests.get(url)
+ 
+print(response.text)
+Show more lines
+What is wrong?
+
+The program lets the user enter any URL and then makes the request for them.
+
+This means the user controls where the server sends the request.
+
+Secure Version
+Python
+allowed_urls = {
+"weather": "https://trusted.example/weather"
+}
+ 
+choice = input("Enter service: ")
+ 
+url = allowed_urls.get(choice)
+ 
+if not url:
+raise ValueError("URL is not allowed")
+ 
+response = requests.get(url, timeout=5)
+ 
+print(response.text)
+Show more lines
+How I fixed it
+
+Instead of allowing any URL, I created a list of destinations the program is allowed to use.
+
+The user chooses an approved service instead of giving the program any URL they want.
+
+10. Identification and Authentication Failures
+Vulnerable Code
+Java
+if (inputPassword.equals(user.getPassword())) {
+// Login success
+}
+Show more lines
+What is wrong?
+
+It looks like the program is comparing the entered password directly with the password stored for the user.
+
+Passwords should not be saved as normal readable passwords.
+
+Secure Version
+Java
+if (BCrypt.checkpw(
+inputPassword,
+user.getPasswordHash())) {
+ 
+// Login success
+}
+Show more lines
+How I fixed it
+
+I changed the program so it checks the password against a stored password hash.
+
+This means the program does not need to store the original password.
