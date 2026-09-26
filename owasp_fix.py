@@ -1,0 +1,62 @@
+from flask import Flask, request, session, redirect, abort
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+app.config["SECRET_KEY"] = "change-this-secret"
+
+users = {
+    "student": {
+        "password": generate_password_hash("StudentPassword123!"),
+        "role": "user"
+    },
+    "admin": {
+        "password": generate_password_hash("AdminPassword123!"),
+        "role": "admin"
+    }
+}
+
+@app.post("/login")
+def login():
+    username = request.form.get("username", "")
+    password = request.form.get("password", "")
+
+    user = users.get(username)
+
+    if not user:
+        return "Invalid username or password", 401
+
+    if not check_password_hash(user["password"], password):
+        return "Invalid username or password", 401
+
+    session["username"] = username
+    session["role"] = user["role"]
+
+    return redirect("/profile")
+
+@app.get("/profile")
+def profile():
+    if "username" not in session:
+        abort(401)
+
+    return {
+        "username": session["username"],
+        "role": session["role"]
+    }
+
+@app.get("/admin")
+def admin():
+    if "username" not in session:
+        abort(401)
+
+    if session.get("role") != "admin":
+        abort(403)
+
+    return "Welcome to the admin page"
+
+@app.post("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
+
+if __name__ == "__main__":
+    app.run()
